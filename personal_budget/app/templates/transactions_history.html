@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Transaction History</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+  <style>
+    .filter-dropdown {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fff;
+      padding: 8px 10px;
+    }
+    .filter-dropdown > summary {
+      cursor: pointer;
+      list-style: none;
+      font-weight: 600;
+    }
+    .filter-dropdown > summary::-webkit-details-marker {
+      display: none;
+    }
+    .filter-dropdown-list {
+      margin-top: 8px;
+      max-height: 180px;
+      overflow: auto;
+      display: grid;
+      gap: 6px;
+    }
+    .filter-dropdown-list label {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: flex-start;
+      font-weight: 400;
+      text-align: left;
+    }
+    .filter-dropdown-list input[type="checkbox"] {
+      width: auto;
+      flex: 0 0 auto;
+    }
+  </style>
+  <script src="/static/js/splash.js" defer></script>
+</head>
+<body>
+  <div class="app-layout">
+    <aside class="sidebar">
+      <h1>Personal Budget</h1>
+      <div class="meta">User: {{ user.username }}</div>
+      <h3>Menu</h3>
+      <ul>
+        <li><a href="/app">Back to Dashboard</a></li>
+        <li><a href="/profile">Profile</a></li>
+      </ul>
+    </aside>
+
+    <main class="main">
+      <section class="card">
+        <h3>Transaction history</h3>
+        <form method="get" action="/transactions/history" class="stack" style="margin-bottom: 12px;">
+          <div class="grid-2">
+            <label>Account/Card (you can select multiple)
+              <details class="filter-dropdown">
+                <summary>Select accounts/cards</summary>
+                <div class="filter-dropdown-list">
+                  {% for a in accounts %}
+                    <label>
+                      <input type="checkbox" name="account_id" value="{{ a.id }}" {% if a.id in selected_account_ids %}checked{% endif %} />
+                      <span>{{ a.nickname }} ({{ a.type }})</span>
+                    </label>
+                  {% endfor %}
+                </div>
+              </details>
+            </label>
+            <label>Type (you can select multiple)
+              <details class="filter-dropdown">
+                <summary>Select types</summary>
+                <div class="filter-dropdown-list">
+                  <label><input type="checkbox" name="kind" value="expense" {% if 'expense' in selected_types %}checked{% endif %} /> <span>Expense</span></label>
+                  <label><input type="checkbox" name="kind" value="income" {% if 'income' in selected_types %}checked{% endif %} /> <span>Income</span></label>
+                  <label><input type="checkbox" name="kind" value="investment" {% if 'investment' in selected_types %}checked{% endif %} /> <span>Investment</span></label>
+                  <label><input type="checkbox" name="kind" value="goal_transfer" {% if 'goal_transfer' in selected_types %}checked{% endif %} /> <span>Goal transfer</span></label>
+                </div>
+              </details>
+            </label>
+          </div>
+          <div class="grid-2">
+            <label>Specific month
+              <input type="month" name="month" value="{{ month_filter }}" />
+            </label>
+            <label>Specific date
+              <input type="date" name="tx_date" value="{{ tx_date_filter }}" />
+            </label>
+          </div>
+          <div class="grid-2">
+            <label>Start date
+              <input type="date" name="date_from" value="{{ date_from_filter }}" />
+            </label>
+            <label>End date
+              <input type="date" name="date_to" value="{{ date_to_filter }}" />
+            </label>
+          </div>
+          <label>Category
+            <select name="category">
+              <option value="">All categories</option>
+              {% for c in categories %}
+                <option value="{{ c }}" {% if c == category_filter %}selected{% endif %}>{{ c }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <div class="actions">
+            <button type="submit">Filter</button>
+            <a href="/transactions/history" class="button-link">Clear filters</a>
+          </div>
+        </form>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Type</th>
+                <th>Category</th>
+                <th>Amount</th>
+                <th>Account/Card</th>
+                <th>Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for tx, account_nickname in rows %}
+                <tr>
+                  <td>{{ tx.tx_date }}</td>
+                  <td>
+                    {% if tx.kind == 'goal_transfer' %}
+                      Goal transfer
+                    {% else %}
+                      {{ tx.kind }}
+                    {% endif %}
+                  </td>
+                  <td>{{ tx.category }}</td>
+                  <td>{{ tx.amount|usd }}</td>
+                  <td>{{ account_nickname or 'No linked account' }}</td>
+                  <td>{{ tx.description or '-' }}</td>
+                </tr>
+              {% else %}
+                <tr><td colspan="6">No transactions found.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

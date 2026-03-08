@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Profile - Personal Budget</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+  <script src="/static/js/splash.js" defer></script>
+</head>
+<body>
+  <button type="button" class="menu-toggle" id="menu-toggle" aria-label="Open menu">☰ Menu</button>
+  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+  <div class="app-layout">
+    <aside class="sidebar" id="app-sidebar">
+      <h1>User Profiles</h1>
+      <div class="meta">Signed in: {{ user.username }}</div>
+      <div class="meta">Type: {{ "Administrator" if user.is_admin else "Standard" }}</div>
+      <ul>
+        <li><a href="/app">Back to Home</a></li>
+      </ul>
+      <form method="post" action="/logout">
+        <button class="ghost" type="submit">Sign out</button>
+      </form>
+    </aside>
+
+    <main class="main">
+      {% if profile_feedback %}
+        <div class="banner {{ profile_feedback.level }}">{{ profile_feedback.message }}</div>
+      {% endif %}
+
+      <section class="card">
+        <h3>My Profile</h3>
+        <form method="post" action="/profile/update" enctype="multipart/form-data" class="stack">
+          <label>Name
+            <input type="text" name="username" minlength="3" value="{{ user.username }}" required />
+          </label>
+          <label>Initials (used in charts)
+            <input type="text" name="initials" maxlength="8" value="{{ user.initials or '' }}" placeholder="Ex: LS" />
+          </label>
+          <label>Email
+            <input type="email" name="email" value="{{ user.email or '' }}" required />
+          </label>
+          <label>Profile image (PNG/JPG/WEBP)
+            <input type="file" name="image" accept="image/png,image/jpeg,image/webp" />
+          </label>
+          {% if user.profile_image %}
+            <img src="{{ user.profile_image }}" alt="Profile image" class="profile-image" />
+          {% endif %}
+          <label>New password (optional)
+            <input type="password" name="password" minlength="8" placeholder="Minimum 8 characters" />
+          </label>
+          <button type="submit">Save my profile</button>
+        </form>
+      </section>
+
+      {% if user.is_admin %}
+      <section class="card">
+        <h3>Create New User</h3>
+        <form method="post" action="/admin/users/create" class="grid-2">
+          <label>Name
+            <input type="text" name="username" minlength="3" required />
+          </label>
+          <label>Initials
+            <input type="text" name="initials" maxlength="8" placeholder="Ex: LS" />
+          </label>
+          <label>Email
+            <input type="email" name="email" required />
+          </label>
+          <label>Password
+            <input type="password" name="password" minlength="8" required />
+          </label>
+          <label><input type="checkbox" name="is_admin" /> Administrator</label>
+          <button type="submit">Create user</button>
+        </form>
+      </section>
+      {% endif %}
+
+      <section class="card">
+        <h3>User List</h3>
+        {% if user.is_admin %}
+          <form id="bulk-delete-form" method="post" action="/admin/users/delete-selected" class="actions" style="margin-bottom: 10px;">
+            <input type="hidden" name="return_to" value="/profile" />
+            <div id="bulk-delete-hidden-fields"></div>
+            <button class="warn" type="submit" id="bulk-delete-btn" disabled>Delete selected</button>
+          </form>
+          <form id="bulk-role-form" method="post" action="/admin/users/role-selected" class="actions" style="margin-bottom: 10px;">
+            <input type="hidden" name="return_to" value="/profile" />
+            <input type="hidden" name="role_action" id="bulk-role-action" value="make_admin" />
+            <div id="bulk-role-hidden-fields"></div>
+            <button class="ghost" type="submit" id="bulk-make-admin-btn" disabled>Make admin</button>
+            <button class="ghost" type="button" id="bulk-remove-admin-btn" disabled>Remove admin</button>
+          </form>
+        {% endif %}
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                {% if user.is_admin %}
+                  <th>Select</th>
+                {% endif %}
+                <th>Image</th>
+                <th>Name</th>
+                <th>Initials</th>
+                <th>Email</th>
+                <th>Created at</th>
+                <th>Accounts/Cards</th>
+                <th>Status</th>
+                {% if user.is_admin %}
+                  <th>Update</th>
+                  <th>Block</th>
+                  <th>Delete</th>
+                {% endif %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for listed in users %}
+                <tr>
+                  {% if user.is_admin %}
+                    <td>
+                      {% if listed.is_self %}
+                        -
+                      {% else %}
+                        <input type="checkbox" class="user-delete-checkbox" value="{{ listed.id }}" />
+                      {% endif %}
+                    </td>
+                  {% endif %}
+                  <td>
+                    {% if listed.profile_image %}
+                      <img src="{{ listed.profile_image }}" alt="Image {{ listed.username }}" class="profile-image-sm" />
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
+                  <td>{{ listed.username }} {% if listed.is_admin %}(admin){% endif %}</td>
+                  <td>{{ listed.initials or '-' }}</td>
+                  <td>{{ listed.email or "-" }}</td>
+                  <td>{{ listed.created_at }}</td>
+                  <td>{{ listed.accounts_count }}</td>
+                  <td>{{ "Blocked" if listed.is_blocked else "Active" }}</td>
+                  {% if user.is_admin %}
+                    <td>
+                      {% if listed.is_self %}
+                        Current user
+                      {% else %}
+                        <form method="post" action="/admin/users/update" class="stack">
+                          <input type="hidden" name="id" value="{{ listed.id }}" />
+                          <input type="hidden" name="return_to" value="/profile" />
+                          <input type="text" name="username" minlength="3" value="{{ listed.username }}" required />
+                          <input type="text" name="initials" maxlength="8" value="{{ listed.initials or '' }}" placeholder="Initials" />
+                          <input type="email" name="email" value="{{ listed.email }}" required />
+                          <input type="password" name="password" minlength="8" placeholder="New password (optional)" />
+                          <button type="submit">Save</button>
+                        </form>
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% if listed.is_self %}
+                        -
+                      {% else %}
+                        <form method="post" action="/admin/users/block">
+                          <input type="hidden" name="id" value="{{ listed.id }}" />
+                          <input type="hidden" name="return_to" value="/profile" />
+                          <input type="hidden" name="action" value="{{ 'unblock' if listed.is_blocked else 'block' }}" />
+                          <button class="{{ 'ghost' if listed.is_blocked else 'warn' }}" type="submit">
+                            {{ "Unblock" if listed.is_blocked else "Block" }}
+                          </button>
+                        </form>
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% if listed.is_self %}
+                        -
+                      {% else %}
+                        <form method="post" action="/admin/users/delete">
+                          <input type="hidden" name="id" value="{{ listed.id }}" />
+                          <input type="hidden" name="return_to" value="/profile" />
+                          <button class="warn" type="submit">Delete</button>
+                        </form>
+                      {% endif %}
+                    </td>
+                  {% endif %}
+                </tr>
+              {% else %}
+                <tr><td colspan="{{ 11 if user.is_admin else 7 }}">No users found</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const menuToggle = document.getElementById('menu-toggle');
+      const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+      if (menuToggle) menuToggle.addEventListener('click', () => document.body.classList.toggle('sidebar-open'));
+      if (sidebarBackdrop) sidebarBackdrop.addEventListener('click', () => document.body.classList.remove('sidebar-open'));
+      document.querySelectorAll('.sidebar a').forEach((el) => {
+        el.addEventListener('click', () => document.body.classList.remove('sidebar-open'));
+      });
+
+      const bulkDeleteForm = document.getElementById('bulk-delete-form');
+      const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
+      const bulkDeleteHiddenFields = document.getElementById('bulk-delete-hidden-fields');
+      const bulkRoleForm = document.getElementById('bulk-role-form');
+      const bulkRoleAction = document.getElementById('bulk-role-action');
+      const bulkRoleHiddenFields = document.getElementById('bulk-role-hidden-fields');
+      const bulkMakeAdminBtn = document.getElementById('bulk-make-admin-btn');
+      const bulkRemoveAdminBtn = document.getElementById('bulk-remove-admin-btn');
+      const deleteCheckboxes = Array.from(document.querySelectorAll('.user-delete-checkbox'));
+      const refreshBulkDeleteState = () => {
+        if (!bulkDeleteBtn) return;
+        const selectedCount = deleteCheckboxes.filter((el) => el.checked).length;
+        bulkDeleteBtn.disabled = selectedCount === 0;
+        if (bulkMakeAdminBtn) bulkMakeAdminBtn.disabled = selectedCount === 0;
+        if (bulkRemoveAdminBtn) bulkRemoveAdminBtn.disabled = selectedCount === 0;
+      };
+      deleteCheckboxes.forEach((checkbox) => {
+        checkbox.addEventListener('change', refreshBulkDeleteState);
+      });
+      if (bulkDeleteForm && bulkDeleteHiddenFields) {
+        bulkDeleteForm.addEventListener('submit', (event) => {
+          bulkDeleteHiddenFields.innerHTML = '';
+          const selected = deleteCheckboxes.filter((el) => el.checked);
+          if (selected.length === 0) {
+            event.preventDefault();
+            refreshBulkDeleteState();
+            return;
+          }
+          selected.forEach((checkbox) => {
+            const hidden = document.createElement('input');
+            hidden.type = 'hidden';
+            hidden.name = 'user_ids';
+            hidden.value = checkbox.value;
+            bulkDeleteHiddenFields.appendChild(hidden);
+          });
+        });
+      }
+      const fillBulkUserIds = (targetContainer) => {
+        if (!targetContainer) return 0;
+        targetContainer.innerHTML = '';
+        const selected = deleteCheckboxes.filter((el) => el.checked);
+        selected.forEach((checkbox) => {
+          const hidden = document.createElement('input');
+          hidden.type = 'hidden';
+          hidden.name = 'user_ids';
+          hidden.value = checkbox.value;
+          targetContainer.appendChild(hidden);
+        });
+        return selected.length;
+      };
+      if (bulkRoleForm && bulkRoleHiddenFields && bulkRoleAction) {
+        bulkRoleForm.addEventListener('submit', (event) => {
+          const count = fillBulkUserIds(bulkRoleHiddenFields);
+          if (count === 0) {
+            event.preventDefault();
+            refreshBulkDeleteState();
+          }
+        });
+        if (bulkMakeAdminBtn) {
+          bulkMakeAdminBtn.addEventListener('click', () => {
+            bulkRoleAction.value = 'make_admin';
+          });
+        }
+        if (bulkRemoveAdminBtn) {
+          bulkRemoveAdminBtn.addEventListener('click', () => {
+            bulkRoleAction.value = 'remove_admin';
+            bulkRoleForm.requestSubmit();
+          });
+        }
+      }
+      refreshBulkDeleteState();
+    });
+  </script>
+</body>
+</html>

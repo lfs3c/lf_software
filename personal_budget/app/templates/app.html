@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Personal Budget</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="/static/js/splash.js" defer></script>
+  <script src="/static/js/app.js" defer></script>
+</head>
+<body>
+  <button type="button" class="menu-toggle" id="menu-toggle" aria-label="Open menu">☰ Menu</button>
+  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+  <div class="app-layout">
+    <aside class="sidebar" id="app-sidebar">
+      <h1>Personal Budget</h1>
+      <div class="meta">User: {{ user.username }}</div>
+      <div class="meta">Profile: {{ "Admin" if user.is_admin else "Standard" }}</div>
+      <div class="meta">Current month: {{ current_month_display }}</div>
+      <form method="post" action="/month/close">
+        <button class="warn" type="submit">Close current month</button>
+      </form>
+      <form method="post" action="/logout">
+        <button class="ghost" type="submit">Sign out</button>
+      </form>
+
+      <h3>Menu</h3>
+      <ul>
+        <li><a href="/profile">Profile</a></li>
+        <li><a href="#planning">Planning</a></li>
+      </ul>
+    </aside>
+
+    <main class="main">
+      <section class="card">
+        <h3>Annual summary</h3>
+        <p id="annual-year-label">Year</p>
+        <canvas id="annualChart"></canvas>
+      </section>
+
+      {% if upcoming_count > 0 %}
+        <div class="banner"><strong>Alert:</strong> you have {{ upcoming_count }} payment(s) due within 7 days.</div>
+      {% endif %}
+      {% if card_payment_alerts %}
+        <div class="banner">
+          <strong>Card alerts (next 7 days):</strong>
+          <ul class="alert-list">
+            {% for alert in card_payment_alerts %}
+              <li class="banner {{ alert.level }}">
+                Card {{ alert.nickname }}:
+                payment on {{ alert.payment_date }}
+                {% if alert.days_remaining == 0 %}
+                  (due today)
+                {% elif alert.days_remaining == 1 %}
+                  (1 day left)
+                {% else %}
+                  ({{ alert.days_remaining }} days left)
+                {% endif %}
+                | current amount {{ alert.current_value|usd }}
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+
+      <section class="grid-2">
+        <article class="card">
+          <h3>Expenses vs Income</h3>
+          <p id="chart-month-label">Current month</p>
+          <canvas id="monthChart"></canvas>
+          <hr />
+          <h3>Investments</h3>
+          <div class="investments-controls">
+            <label>Display
+              <select id="investments-view-mode">
+                <option value="month">By month</option>
+                <option value="year">Full year</option>
+              </select>
+            </label>
+            <button type="button" id="toggle-investment-manual" class="ghost">Manual adjustment (optional)</button>
+          </div>
+          <div id="investment-manual-panel" class="investments-manual hidden">
+            <label>Acorns (USD)
+              <input type="text" inputmode="decimal" id="investment-manual-acorns" class="currency-input" />
+            </label>
+            <label>Webull (USD)
+              <input type="text" inputmode="decimal" id="investment-manual-webull" class="currency-input" />
+            </label>
+            <button type="button" id="investment-manual-save">Save manual values</button>
+          </div>
+          <p id="investments-range-label">Current month</p>
+          <p id="investment-manual-feedback" class="feedback"></p>
+          <canvas id="investmentsChart"></canvas>
+        </article>
+        <article class="card">
+          <div class="chart-head">
+            <h3>% by category</h3>
+            <button type="button" id="edit-category-colors-btn" class="ghost small-btn">Edit</button>
+          </div>
+          <div id="category-colors-panel" class="category-colors-panel hidden">
+            <div id="category-colors-list" class="category-colors-list"></div>
+            <button type="button" id="save-category-colors-btn" class="small-btn">Save colors</button>
+            <p id="category-colors-feedback" class="feedback"></p>
+          </div>
+          <canvas id="categoryChart"></canvas>
+        </article>
+      </section>
+
+      <section class="grid-2">
+        <article class="card" id="planning">
+          <h3>Goal planning</h3>
+          {% if planning_feedback %}
+            <div class="banner {{ planning_feedback.level }}">{{ planning_feedback.message }}</div>
+          {% endif %}
+          <form method="post" action="/planning/save" class="stack">
+            <label>What goal do you want to achieve?
+              <input name="objective" required />
+            </label>
+            <label>Target amount (USD)
+              <input type="text" inputmode="decimal" name="target_amount" class="currency-input" required />
+            </label>
+            <label>Target date
+              <input type="date" name="target_date" required />
+            </label>
+            <button type="submit">Generate monthly plan</button>
+          </form>
+          <div class="goals-list">
+            {% for item in planning_goals_progress %}
+              <div class="goal-item">
+                <div>
+                  <strong>{{ item.goal.goal_code }}</strong> - {{ item.goal.goal_alias }}<br />
+                  Target: {{ item.goal.target_amount|usd }} by {{ item.goal.target_date }}<br />
+                  Save per month: <strong>{{ item.goal.monthly_saving|usd }}</strong><br />
+                  Saved progress: <strong>{{ item.saved_amount|usd }}</strong> ({{ item.percent }}%)
+                </div>
+                <form method="post" action="/planning/delete">
+                  <input type="hidden" name="id" value="{{ item.goal.id }}" />
+                  <button class="warn" type="submit">Delete goal</button>
+                </form>
+              </div>
+            {% else %}
+              <div class="banner info">No goals created yet.</div>
+            {% endfor %}
+          </div>
+        </article>
+
+        <article class="card">
+          <h3>Accounts and Cards</h3>
+          <form method="post" action="/accounts/save" class="stack" id="account-form" autocomplete="off">
+            <input type="hidden" name="id" id="account-id" />
+            <label>Nickname <input name="nickname" id="account-nickname" required /></label>
+            <label>Type
+              <select name="type" id="account-type" required>
+                <option value="account">Account</option>
+                <option value="card">Card</option>
+              </select>
+            </label>
+            <label>Last 4 digits (optional) <input name="last4" id="account-last4" maxlength="4" /></label>
+            <label id="account-closing-wrap">Closing date (optional - card) <input type="date" name="closing_date" id="account-closing-date" /></label>
+            <label id="account-payment-wrap">Payment date (optional - card) <input type="date" name="payment_date" id="account-payment-date" /></label>
+            <div class="actions">
+              <button type="submit" id="account-submit-btn">Save account/card</button>
+              <button type="button" class="ghost" onclick="resetAccountForm()">New entry</button>
+            </div>
+          </form>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Nickname</th><th>Type</th><th>Last 4</th><th>Closing</th><th>Payment</th><th>Actions</th></tr></thead>
+              <tbody>
+                {% for a in accounts %}
+                  <tr>
+                    <td>{{ a.nickname }}</td>
+                    <td>{{ a.type }}</td>
+                    <td>{{ a.last4 or '-' }}</td>
+                    <td>{{ a.closing_date or '-' }}</td>
+                    <td>{{ a.payment_date or '-' }}</td>
+                    <td class="actions">
+                      <button type="button" class="ghost" onclick="fillAccount('{{ a.id }}','{{ a.nickname }}','{{ a.type }}','{{ a.last4 or '' }}','{{ a.closing_date or '' }}','{{ a.payment_date or '' }}')">Edit</button>
+                      <form method="post" action="/accounts/delete">
+                        <input type="hidden" name="id" value="{{ a.id }}" />
+                        <button class="warn" type="submit">Delete</button>
+                      </form>
+                    </td>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="6">No accounts/cards</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section class="grid-2">
+        <article class="card">
+          <h3>Transactions</h3>
+          <form method="post" action="/transactions/save" class="stack">
+            <input type="hidden" name="id" id="tx-id" />
+            <label>Type
+              <select name="kind" id="tx-kind" required>
+                <option value="expense">Expense</option>
+                <option value="income">Income</option>
+                <option value="investment">Investments</option>
+                {% for item in planning_goals_progress %}
+                  <option
+                    value="goal_transfer:{{ item.goal.goal_code|lower }}"
+                    data-goal-transfer="true"
+                    data-goal-code="{{ item.goal.goal_code }}"
+                    data-goal-category="{{ item.goal.category_name }}"
+                  >
+                    Transfer to {{ item.goal.goal_code }} ({{ item.goal.goal_alias }})
+                  </option>
+                {% endfor %}
+              </select>
+            </label>
+            <label>Category <input name="category" id="tx-category" list="expense-categories" required /></label>
+            <datalist id="expense-categories">
+              {% for c in expense_categories %}
+                <option value="{{ c }}"></option>
+              {% endfor %}
+            </datalist>
+            <datalist id="income-categories">
+              {% for c in income_categories %}
+                <option value="{{ c }}"></option>
+              {% endfor %}
+            </datalist>
+            <datalist id="investment-categories">
+              {% for c in investment_categories %}
+                <option value="{{ c }}"></option>
+              {% endfor %}
+            </datalist>
+            <label>Amount (USD) <input type="text" inputmode="decimal" name="amount" id="tx-amount" class="currency-input" required /></label>
+            <label>Date <input type="date" name="tx_date" id="tx-date" value="{{ today }}" required /></label>
+            <label>Description <textarea name="description" id="tx-description"></textarea></label>
+            <label>Account/Card
+              <select name="account_id" id="tx-account-id">
+                <option value="">No linked account</option>
+                {% for a in accounts %}
+                  <option value="{{ a.id }}">{{ a.nickname }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <button type="submit">Save transaction</button>
+          </form>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Amount</th><th>Actions</th></tr></thead>
+              <tbody>
+                {% for t in transactions %}
+                  <tr>
+                    <td>{{ t.tx_date }}</td>
+                    <td>
+                      {% if t.kind == 'goal_transfer' %}
+                        Goal transfer
+                      {% else %}
+                        {{ t.kind }}
+                      {% endif %}
+                    </td>
+                    <td>{{ t.category }}</td>
+                    <td>{{ t.amount|usd }}</td>
+                    <td class="actions">
+                      <button type="button" class="ghost" onclick="fillTx('{{ t.id }}','{{ t.kind }}','{{ t.category }}','{{ t.amount }}','{{ t.tx_date }}','{{ t.description or '' }}','{{ t.account_id or '' }}')">Edit</button>
+                      <form method="post" action="/transactions/delete">
+                        <input type="hidden" name="id" value="{{ t.id }}" />
+                        <button class="warn" type="submit">Delete</button>
+                      </form>
+                    </td>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="5">No transactions this month</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <a class="button-link" href="/transactions/history">View all</a>
+        </article>
+
+        <article class="card">
+          <h3>Upcoming payments</h3>
+          <form method="post" action="/bills/save" class="grid-2">
+            <input type="hidden" name="id" id="bill-id" />
+            <label>Title <input name="title" id="bill-title" required /></label>
+            <label>Amount (USD) <input type="text" inputmode="decimal" name="amount" id="bill-amount" class="currency-input" required /></label>
+            <label>Due date <input type="date" name="due_date" id="bill-due-date" required /></label>
+            <label>Account/Card
+              <select name="account_id" id="bill-account-id">
+                <option value="">No linked account</option>
+                {% for a in accounts %}
+                  <option value="{{ a.id }}">{{ a.nickname }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <label><input type="checkbox" name="paid" id="bill-paid" /> Paid</label>
+            <button type="submit">Save bill</button>
+          </form>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Title</th><th>Amount</th><th>Due date</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody>
+                {% for b in bills %}
+                  <tr>
+                    <td>{{ b.title }}</td>
+                    <td>{{ b.amount|usd }}</td>
+                    <td>{{ b.due_date }}</td>
+                    <td>{{ 'Paid' if b.paid else 'Pending' }}</td>
+                    <td class="actions">
+                      <button type="button" class="ghost" onclick="fillBill('{{ b.id }}','{{ b.title }}','{{ b.amount }}','{{ b.due_date }}','{{ b.account_id or '' }}',{{ 'true' if b.paid else 'false' }})">Edit</button>
+                      <form method="post" action="/bills/delete">
+                        <input type="hidden" name="id" value="{{ b.id }}" />
+                        <button class="warn" type="submit">Delete</button>
+                      </form>
+                    </td>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="5">No bills</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+    </main>
+  </div>
+
+  <script>
+    function formatCentsAsUsd(cents) {
+      const safeCents = Number.isFinite(cents) ? Math.max(0, Math.round(cents)) : 0;
+      const centPart = String(safeCents % 100).padStart(2, '0');
+      const intPartRaw = String(Math.floor(safeCents / 100));
+      const intPart = intPartRaw.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      return `${intPart}.${centPart}`;
+    }
+
+    function parseAmountToCents(rawValue) {
+      const raw = String(rawValue ?? '').trim();
+      if (!raw) return null;
+      const hasDot = raw.includes('.');
+      const hasComma = raw.includes(',');
+      let normalized = raw;
+
+      if (hasDot && hasComma) {
+        normalized = raw.lastIndexOf(',') > raw.lastIndexOf('.')
+          ? raw.replace(/,/g, '')
+          : raw.replace(/,/g, '');
+      } else if (hasComma) {
+        normalized = raw.replace(/,/g, '');
+      }
+
+      const number = Number.parseFloat(normalized);
+      if (!Number.isFinite(number)) return null;
+      return Math.round(number * 100);
+    }
+
+    function maskCurrencyInput(el) {
+      const digits = (el.value || '').replace(/\D/g, '');
+      el.value = digits ? formatCentsAsUsd(Number(digits)) : '';
+    }
+
+    function setCurrencyInputValue(elementId, amount) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      const cents = parseAmountToCents(amount);
+      el.value = cents === null ? '' : formatCentsAsUsd(cents);
+    }
+
+    function resetAccountForm() {
+      document.getElementById('account-id').value = '';
+      document.getElementById('account-nickname').value = '';
+      document.getElementById('account-type').value = 'account';
+      document.getElementById('account-last4').value = '';
+      document.getElementById('account-closing-date').value = '';
+      document.getElementById('account-payment-date').value = '';
+      document.getElementById('account-submit-btn').innerText = 'Save account/card';
+      toggleAccountCardFields();
+    }
+
+    function fillAccount(id, nickname, type, last4, closingDate, paymentDate) {
+      document.getElementById('account-id').value = id;
+      document.getElementById('account-nickname').value = nickname;
+      document.getElementById('account-type').value = type;
+      document.getElementById('account-last4').value = last4;
+      document.getElementById('account-closing-date').value = closingDate;
+      document.getElementById('account-payment-date').value = paymentDate;
+      document.getElementById('account-submit-btn').innerText = 'Update account/card';
+      toggleAccountCardFields();
+    }
+
+    function toggleAccountCardFields() {
+      const type = document.getElementById('account-type').value;
+      const isCard = type === 'card';
+      document.getElementById('account-closing-wrap').style.display = isCard ? 'block' : 'none';
+      document.getElementById('account-payment-wrap').style.display = isCard ? 'block' : 'none';
+      if (!isCard) {
+        document.getElementById('account-closing-date').value = '';
+        document.getElementById('account-payment-date').value = '';
+      }
+    }
+
+    function fillTx(id, kind, category, amount, txDate, description, accountId) {
+      document.getElementById('tx-id').value = id;
+      const txKind = document.getElementById('tx-kind');
+      if (kind === 'goal_transfer') {
+        const goalOption = Array.from(txKind.options).find((opt) => opt.dataset.goalCategory === category);
+        if (goalOption) {
+          txKind.value = goalOption.value;
+        } else {
+          txKind.value = 'investment';
+        }
+      } else {
+        txKind.value = kind;
+      }
+      updateTxCategoryList();
+      document.getElementById('tx-category').value = category;
+      setCurrencyInputValue('tx-amount', amount);
+      document.getElementById('tx-date').value = txDate;
+      document.getElementById('tx-description').value = description;
+      document.getElementById('tx-account-id').value = accountId;
+    }
+
+    function fillBill(id, title, amount, dueDate, accountId, paid) {
+      document.getElementById('bill-id').value = id;
+      document.getElementById('bill-title').value = title;
+      setCurrencyInputValue('bill-amount', amount);
+      document.getElementById('bill-due-date').value = dueDate;
+      document.getElementById('bill-account-id').value = accountId;
+      document.getElementById('bill-paid').checked = paid;
+    }
+
+    function updateTxCategoryList() {
+      const txKind = document.getElementById('tx-kind');
+      const kind = txKind.value;
+      const txCategory = document.getElementById('tx-category');
+      const selectedOption = txKind.options[txKind.selectedIndex];
+      if (selectedOption && selectedOption.dataset.goalTransfer === 'true') {
+        txCategory.value = selectedOption.dataset.goalCategory || '';
+        txCategory.removeAttribute('list');
+        txCategory.readOnly = true;
+        return;
+      }
+      txCategory.readOnly = false;
+      const listId = kind === 'income'
+        ? 'income-categories'
+        : kind === 'investment'
+          ? 'investment-categories'
+          : 'expense-categories';
+      txCategory.setAttribute('list', listId);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      resetAccountForm();
+      document.getElementById('account-type').addEventListener('change', toggleAccountCardFields);
+      document.getElementById('tx-kind').addEventListener('change', updateTxCategoryList);
+      document.querySelectorAll('.currency-input').forEach((el) => {
+        el.addEventListener('input', () => maskCurrencyInput(el));
+        maskCurrencyInput(el);
+      });
+
+      const menuToggle = document.getElementById('menu-toggle');
+      const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+      const toggleSidebar = () => document.body.classList.toggle('sidebar-open');
+      if (menuToggle) menuToggle.addEventListener('click', toggleSidebar);
+      if (sidebarBackdrop) sidebarBackdrop.addEventListener('click', () => document.body.classList.remove('sidebar-open'));
+      document.querySelectorAll('.sidebar a').forEach((el) => {
+        el.addEventListener('click', () => document.body.classList.remove('sidebar-open'));
+      });
+
+      updateTxCategoryList();
+    });
+  </script>
+</body>
+</html>

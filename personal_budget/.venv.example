@@ -1,0 +1,16 @@
+# Public host port. The app runs inside the container on 3100.
+# Change this value if 3200 is already in use on your machine.
+APP_PORT=3200
+
+# App secret for session encryption.
+# Always change in production.
+SECRET_KEY=change-this-secret-in-production
+
+# Initial admin account created on first boot.
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=admin12345
+
+# PostgreSQL settings (used by docker-compose).
+POSTGRES_DB=personal_budget
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres

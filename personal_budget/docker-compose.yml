@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgres:16
+    container_name: personal_budget_db
+    environment:
+      # Default database credentials for local self-hosting.
+      # Change them before exposing this app outside your trusted network.
+      POSTGRES_DB: ${POSTGRES_DB:-personal_budget}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-personal_budget}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  web:
+    build: .
+    container_name: personal_budget_web
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-personal_budget}
+      SECRET_KEY: ${SECRET_KEY:-change-this-secret-in-production}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin12345}
+    ports:
+      # Host port is configurable. Default: http://localhost:3200
+      # Example: APP_PORT=8080 docker compose up -d --build
+      - "${APP_PORT:-3200}:3100"
+    volumes:
+      - profile_uploads:/app/app/static/uploads/profiles
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  profile_uploads:

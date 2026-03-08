@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Personal Budget - Login</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+  <script src="/static/js/splash.js" defer></script>
+</head>
+<body class="auth-body">
+  <main class="auth-card" data-initial-mode="{{ auth_mode or '' }}">
+    <h1>Personal Budget</h1>
+    <p>Self-hosted app for expenses and income.</p>
+    {% if error %}
+      <div class="alert error">{{ error }}</div>
+    {% endif %}
+    <div class="auth-switch">
+      <button type="button" id="show-login" class="ghost">Login</button>
+      <button type="button" id="show-register" class="ghost">Register</button>
+    </div>
+    <section id="login-panel" class="auth-panel hidden">
+      <h2>Sign in</h2>
+      <form method="post" action="/login" class="stack">
+        <label>Username <input type="text" name="username" required /></label>
+        <label>Password <input type="password" name="password" required /></label>
+        <button type="submit">Sign in</button>
+      </form>
+    </section>
+    <section id="register-panel" class="auth-panel hidden">
+      <h2>Create account</h2>
+      <form method="post" action="/register" class="stack">
+        <label>Username <input type="text" name="username" minlength="3" required /></label>
+        <label>Email <input type="email" name="email" required /></label>
+        <label>Password <input type="password" name="password" minlength="8" required /></label>
+        <button type="submit">Register</button>
+      </form>
+    </section>
+  </main>
+  <script>
+    (() => {
+      const card = document.querySelector(".auth-card");
+      const loginBtn = document.getElementById("show-login");
+      const registerBtn = document.getElementById("show-register");
+      const loginPanel = document.getElementById("login-panel");
+      const registerPanel = document.getElementById("register-panel");
+      if (!(card && loginBtn && registerBtn && loginPanel && registerPanel)) return;
+
+      const setMode = (mode) => {
+        const showLogin = mode === "login";
+        const showRegister = mode === "register";
+        loginPanel.classList.toggle("hidden", !showLogin);
+        registerPanel.classList.toggle("hidden", !showRegister);
+        loginBtn.classList.toggle("active", showLogin);
+        registerBtn.classList.toggle("active", showRegister);
+      };
+
+      loginBtn.addEventListener("click", () => setMode("login"));
+      registerBtn.addEventListener("click", () => setMode("register"));
+
+      const initialMode = card.dataset.initialMode;
+      if (initialMode === "login" || initialMode === "register") {
+        setMode(initialMode);
+      } else {
+        setMode("");
+      }
+    })();
+  </script>
+</body>
+</html>

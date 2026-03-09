@@ -13,7 +13,6 @@ Self-hosted personal finance app to manage expenses, income, investments, goals,
 ## About this project
 - Open-source project created by [lfs3c](https://github.com/lfs3c).
 - First full software project by the author.
-- Built with some AI assistance.
 - Feedback, constructive criticism, and suggestions are very welcome.
 
 ## Repository location
